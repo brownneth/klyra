@@ -447,7 +447,7 @@ export default function App() {
                     </div>
                     <div className={!showSettings ? 'hidden-ui' : ''} style={{
                         position: 'absolute', top: '100%', right: '0', marginTop: '8px',
-                        background: 'rgba(255,255,255,0.6)', backdropFilter: 'blur(24px) saturate(150%)', WebkitBackdropFilter: 'blur(24px) saturate(150%)',
+                        background: 'rgba(255,255,255,0.6)', WebkitBackdropFilter: 'blur(24px) saturate(150%)', backdropFilter: 'blur(24px) saturate(150%)',
                         border: '1px solid rgba(0,0,0,0.06)', borderRadius: '24px', padding: '16px',
                         boxShadow: '0 10px 40px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.6)', zIndex: 2000, width: '220px',
                         display: 'flex', flexDirection: 'column', gap: '16px'

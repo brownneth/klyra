@@ -267,8 +267,8 @@ body, html {
     margin-top: 8px;
     width: 240px;
     background: rgba(255, 255, 255, 0.6);
-    backdrop-filter: blur(24px) saturate(150%);
     -webkit-backdrop-filter: blur(24px) saturate(150%);
+    backdrop-filter: blur(24px) saturate(150%);
     border: 1px solid rgba(0,0,0,0.06);
     border-radius: 24px;
     box-shadow: 0 10px 40px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.6);
@@ -468,8 +468,8 @@ body, html {
     gap: 4px;
     align-items: center;
     background: rgba(255, 255, 255, 0.6);
-    backdrop-filter: blur(24px) saturate(150%);
     -webkit-backdrop-filter: blur(24px) saturate(150%);
+    backdrop-filter: blur(24px) saturate(150%);
     border: 1px solid rgba(0,0,0,0.06);
     border-radius: 24px;
     padding: 6px;
@@ -496,8 +496,8 @@ body, html {
     gap: 8px;
     align-items: center;
     background: rgba(255, 255, 255, 0.6);
-    backdrop-filter: blur(24px) saturate(150%);
     -webkit-backdrop-filter: blur(24px) saturate(150%);
+    backdrop-filter: blur(24px) saturate(150%);
     border: 1px solid rgba(0,0,0,0.06);
     border-radius: 999px;
     padding: 6px;
@@ -589,8 +589,8 @@ body, html {
     left: 50%;
     transform: translateX(-50%);
     background: rgba(28, 28, 30, 0.7);
-    backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
     color: #fff;
     padding: 8px 16px;
     border-radius: 20px;
@@ -755,8 +755,8 @@ input:checked + .toggle-slider:before {
     margin-top: 10px;
     transform: translateX(-50%) scale(0.9);
     background: rgba(28, 28, 30, 0.85);
-    backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
     color: #fff;
     padding: 6px 12px;
     border-radius: 8px;
