@@ -1,0 +1,1968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Klyra - Minimal Moodboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Parkinsans:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #fbfbfb;
+            --grid-color: rgba(0, 0, 0, 0.1);
+            --accent-color: #3265FF;
+            --accent-transparent: rgba(50, 101, 255, 0.15);
+            --guide-color: rgba(50, 101, 255, 0.3);
+            --text-color: #1c1c1e;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Parkinsans', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+        }
+
+        #app {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        /* Viewport handles the dot grid background to simulate infinite space */
+        #viewport {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-image: radial-gradient(circle, var(--grid-color) 1px, transparent 1px);
+            background-size: calc(24px * var(--z)) calc(24px * var(--z));
+            background-position: var(--x) var(--y);
+            transform-origin: 0 0;
+            touch-action: none; /* Crucial for custom trackpad/touch handling */
+        }
+
+        #viewport.no-grid {
+            background-image: none !important;
+        }
+
+        #viewport.space-down {
+            cursor: grab;
+        }
+
+        #viewport.panning {
+            cursor: grabbing;
+        }
+
+        /* Canvas contains the actual image elements and is transformed via CSS */
+        #canvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 0; height: 0;
+            transform-origin: 0 0;
+            will-change: transform;
+        }
+
+        /* Image Node styles */
+        .image-node {
+            position: absolute;
+            top: 0; left: 0;
+            transform-origin: 0 0;
+            will-change: transform, width, height;
+            /* To avoid image ghosting on drag */
+            -webkit-user-drag: none;
+        }
+
+        .image-node img {
+            width: 100%;
+            height: 100%;
+            display: block;
+            pointer-events: none;
+            border-radius: 4px;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.03);
+            transition: box-shadow 0.2s;
+        }
+
+        .image-node:hover img {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+
+        .image-node.selected img {
+            outline: 2px solid var(--accent-color);
+            outline-offset: -2px;
+            box-shadow: 0 5px 16px rgba(0,0,0,0.1);
+        }
+
+        /* Resize Handles */
+        .handle {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: #fff;
+            border: 2px solid var(--accent-color);
+            border-radius: 50%;
+            display: none;
+            z-index: 10;
+        }
+
+        .image-node.selected .handle {
+            display: block;
+        }
+
+        .handle.nw { top: -6px; left: -6px; cursor: nwse-resize; }
+        .handle.ne { top: -6px; right: -6px; cursor: nesw-resize; }
+        .handle.sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
+        .handle.se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+
+        /* Snapping Guides */
+        .guides-container {
+            position: absolute;
+            top: 0; left: 0; width: 0; height: 0;
+            z-index: 99;
+            pointer-events: none;
+        }
+
+        .guide {
+            position: absolute;
+            background-color: var(--guide-color);
+            pointer-events: none;
+        }
+
+        .guide.v {
+            width: 1px;
+            height: 100000px;
+            transform: translateY(-50000px);
+        }
+
+        .guide.h {
+            height: 1px;
+            width: 100000px;
+            transform: translateX(-50000px);
+        }
+
+        /* Lasso Selection */
+        #lasso {
+            position: absolute;
+            border: 1px solid var(--accent-color);
+            background-color: var(--accent-transparent);
+            pointer-events: none;
+            z-index: 999;
+            display: none;
+        }
+
+        /* UI Overlay */
+        #ui {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            padding: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        #ui > * {
+            pointer-events: auto;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo img {
+            height: 20px;
+            object-fit: contain;
+        }
+
+        .logo-fallback {
+            font-weight: 600;
+            font-size: 20px;
+            letter-spacing: -0.5px;
+            color: var(--text-color);
+        }
+        
+        .canvas-name-container {
+            display: flex;
+            align-items: center;
+            height: 32px;
+            gap: 4px;
+        }
+
+        #canvas-name-display {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-color);
+            opacity: 0.5;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+        }
+
+        #canvas-name-display:hover {
+            opacity: 0.8;
+            background: rgba(0, 0, 0, 0.04);
+        }
+
+        #canvas-name-input {
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-color);
+            background: transparent;
+            border: none;
+            outline: none;
+            padding: 4px 8px;
+            width: 140px;
+            border-bottom: 2px solid rgba(0,0,0,0.1);
+            transition: border-color 0.2s ease;
+        }
+
+        #canvas-name-input:focus {
+            border-bottom-color: var(--accent-color);
+        }
+
+        #btn-switcher-toggle {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            padding: 6px;
+            display: flex;
+            align-items: center;
+            border-radius: 6px;
+            color: var(--text-color);
+            opacity: 0.4;
+            transition: all 0.2s ease;
+        }
+
+        #btn-switcher-toggle:hover {
+            opacity: 0.8;
+            background: rgba(0, 0, 0, 0.04);
+        }
+
+        #btn-switcher-toggle svg {
+            transition: transform 0.15s ease;
+        }
+
+        #btn-switcher-toggle.active svg {
+            transform: rotate(90deg);
+        }
+
+        /* Minimal Canvas Switcher Overlay */
+        #canvas-switcher {
+            position: absolute;
+            top: 64px;
+            left: 24px;
+            width: 240px;
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            pointer-events: auto;
+            transform-origin: top left;
+        }
+
+        #canvas-switcher.hidden-ui {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-8px) scale(0.98);
+        }
+
+        .switcher-header {
+            padding: 12px 16px 8px;
+            font-size: 9px;
+            font-weight: 600;
+            color: var(--text-color);
+            opacity: 0.4;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        #canvas-list {
+            max-height: 280px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            padding: 4px 8px;
+            gap: 2px;
+        }
+
+        .canvas-item {
+            position: relative;
+            padding: 8px 36px 8px 12px; /* Extra padding-right to accommodate delete icon */
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-color);
+            transition: background 0.15s ease, color 0.15s ease;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            border-radius: 8px; /* soft faint corners */
+        }
+
+        .canvas-item:hover {
+            background: rgba(0,0,0,0.03); /* subtle faint background */
+        }
+
+        .canvas-item.active {
+            background: transparent; /* No fill */
+            color: var(--text-color); /* Keep normal text */
+        }
+
+        /* Elegant vertical indicator line */
+        .canvas-item.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 6px;
+            bottom: 6px;
+            width: 3px;
+            background: var(--accent-color);
+            opacity: 0.8; /* slightly reduced opacity */
+            border-radius: 0 3px 3px 0;
+        }
+
+        .canvas-item .time {
+            font-size: 9px;
+            font-weight: 400;
+            opacity: 0.4;
+        }
+
+        /* Hover-only Board Delete Action */
+        .btn-delete-board {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            color: var(--text-color);
+            opacity: 0;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 4px;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .canvas-item:hover .btn-delete-board {
+            opacity: 0.4;
+        }
+
+        .canvas-item .btn-delete-board:hover {
+            opacity: 1;
+            background: rgba(255, 59, 48, 0.1);
+            color: #ff3b30;
+        }
+
+        .switcher-footer {
+            padding: 8px;
+            border-top: 1px solid rgba(0,0,0,0.06);
+        }
+
+        .switcher-footer .btn {
+            width: 100%;
+            background: transparent;
+            opacity: 0.8;
+            border-radius: 8px;
+        }
+
+        .switcher-footer .btn:hover {
+            background: rgba(0,0,0,0.04);
+            opacity: 1;
+        }
+
+        .hidden-ui {
+            display: none !important;
+        }
+
+        .controls {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-family: inherit;
+            font-weight: 600;
+            font-size: 12px;
+            color: var(--text-color);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.6;
+        }
+
+        .btn:hover {
+            background: rgba(0, 0, 0, 0.04);
+            opacity: 1;
+        }
+
+        .btn:active {
+            background: rgba(0, 0, 0, 0.08);
+        }
+
+        .btn-icon {
+            padding: 8px;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            transition: all 0.15s ease;
+        }
+        
+        #btn-settings.active {
+            background: rgba(0, 0, 0, 0.05);
+            opacity: 1;
+            border-radius: 20px; /* Subtle pill shape */
+        }
+
+        .btn-icon svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        /* Empty State */
+        #empty-state {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            pointer-events: none;
+            opacity: 0.4;
+            transition: opacity 0.3s;
+        }
+        #empty-state.hidden {
+            opacity: 0;
+        }
+        #empty-state h2 {
+            font-weight: 600;
+            font-size: 20px;
+            margin: 0 0 8px 0;
+        }
+        #empty-state p {
+            margin: 0;
+            font-size: 12px;
+        }
+
+        /* Out of View Navigation Hint */
+        #out-of-view-hint {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(28, 28, 30, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            color: #fff;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            pointer-events: none;
+            z-index: 2000;
+            opacity: 1;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        
+        #out-of-view-hint.hide-hint {
+            opacity: 0;
+            transform: translate(-50%, 10px);
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="app">
+        <!-- Viewport handles panning/zooming and grid background -->
+        <div id="viewport" style="--x: 0px; --y: 0px; --z: 1;">
+            
+            <!-- Canvas actually moves and scales its children -->
+            <div id="canvas">
+                <!-- Images are injected here via JS -->
+                <div class="guides-container" id="guides-container"></div>
+            </div>
+
+            <!-- Lasso is drawn in viewport coordinate space -->
+            <div id="lasso"></div>
+        </div>
+
+        <div id="empty-state">
+            <h2>Canvas is empty</h2>
+            <p>Drag & Drop or Paste (Ctrl+V) images anywhere</p>
+        </div>
+
+        <!-- Out of view hint -->
+        <div id="out-of-view-hint" class="hide-hint">Press F to re-center</div>
+
+        <!-- UI Elements -->
+        <div id="ui">
+            <div style="position: relative;">
+                <div class="logo">
+                    <img src="[not-in-use]assets/klyra-logo.png" alt="Klyra" onerror="this.outerHTML='<div class=\'logo-fallback\'>Klyra</div>'" />
+                    <div class="canvas-name-container">
+                        <span id="canvas-name-display">Untitled</span>
+                        <input type="text" id="canvas-name-input" class="hidden-ui" value="Untitled" spellcheck="false" autocomplete="off" />
+                        <button id="btn-switcher-toggle" title="Switch Boards">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="9 18 15 12 9 6"></polyline>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Canvas Switcher Overlay -->
+                <div id="canvas-switcher" class="hidden-ui">
+                    <div class="switcher-header">Your Boards</div>
+                    <div id="canvas-list">
+                        <!-- Populated via JS -->
+                    </div>
+                    <div class="switcher-footer">
+                        <button class="btn" id="btn-new-board">+ New Canvas</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="controls">
+                <button class="btn btn-icon" id="btn-export" title="Export PNG">
+                    <!-- Export / Download Icon -->
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                </button>
+                <button class="btn btn-icon" id="btn-new" title="New Canvas">
+                    <!-- Plus Icon -->
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                </button>
+                <button class="btn btn-icon" id="btn-settings" title="Toggle Grid">
+                    <!-- Settings/Grid Icon -->
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="3" y1="9" x2="21" y2="9"></line>
+                        <line x1="3" y1="15" x2="21" y2="15"></line>
+                        <line x1="9" y1="3" x2="9" y2="21"></line>
+                        <line x1="15" y1="3" x2="15" y2="21"></line>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+<script>
+/**
+ * Klyra - Minimal Moodboard MVP
+ * Architecture:
+ * - State-driven application
+ * - RequestAnimationFrame for smooth rendering
+ * - DOM reuse for performance
+ */
+
+// --- Settings & Configuration ---
+const SETTINGS = {
+    spacing: 16,        // pixels between images when snapping
+    snapThreshold: 8,   // pixels to trigger snap
+    minZoom: 0.1,
+    maxZoom: 4.0,
+    gridVisible: true
+};
+
+// --- Multi-Board State Architecture ---
+const APP_STATE = {
+    canvases: [],
+    activeId: null
+};
+
+// Current active physics/rendering state mapped to APP_STATE.activeId
+let canvasName = "Untitled";
+
+const STATE = {
+    camera: { x: window.innerWidth / 2, y: window.innerHeight / 2, z: 1 },
+    images: [], // Array of { id, url, x, y, w, h, aspect }
+    selection: new Set(),
+    
+    // Interaction Flags
+    isSpaceDown: false,
+    isPanning: false,
+    isDragging: false,
+    isResizing: false,
+    isLassoing: false,
+    
+    // Interaction Data
+    dragStart: null,    // { mouseX, mouseY, dx, dy, initials: Map(id -> {x, y}), initialStateStr: string }
+    resizeStart: null,  // { handle, imgId, mouseX, mouseY, startW, startH, startX, startY, initialStateStr: string }
+    lasso: { x1: 0, y1: 0, x2: 0, y2: 0 },
+    guides: [],         // [{ axis: 'v'|'h', pos: number }]
+    targetSnap: { x: 0, y: 0 },
+    activeSnap: { x: 0, y: 0 }
+};
+
+// --- Auto-Save Persistence Layer ---
+let saveTimeout = null;
+
+function scheduleSave() {
+    if (saveTimeout) clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(saveToLocalStorage, 500);
+}
+
+function saveToLocalStorage() {
+    // Sync current visual state into the specific active canvas object
+    const active = APP_STATE.canvases.find(c => c.id === APP_STATE.activeId);
+    if (active) {
+        active.name = canvasName;
+        active.images = STATE.images;
+        active.camera = STATE.camera;
+        active.updatedAt = Date.now();
+    }
+    
+    try {
+        localStorage.setItem('klyra_data', JSON.stringify(APP_STATE));
+        localStorage.setItem('klyra_settings', JSON.stringify(SETTINGS));
+    } catch (e) {
+        console.warn("Klyra Auto-save failed: LocalStorage quota exceeded.");
+    }
+}
+
+function loadFromLocalStorage() {
+    try {
+        const data = localStorage.getItem('klyra_data');
+        const settingsData = localStorage.getItem('klyra_settings');
+        
+        if (settingsData) {
+            Object.assign(SETTINGS, JSON.parse(settingsData));
+        }
+
+        if (data) {
+            const parsed = JSON.parse(data);
+            if (parsed.canvases && parsed.canvases.length > 0) {
+                APP_STATE.canvases = parsed.canvases;
+                APP_STATE.activeId = parsed.activeId || parsed.canvases[0].id;
+            }
+        } else {
+            // Fallback / migration for older version 'klyra_state'
+            const oldData = localStorage.getItem('klyra_state');
+            if (oldData) {
+                const parsed = JSON.parse(oldData);
+                const migratedCanvas = {
+                    id: generateId(),
+                    name: parsed.name || "Untitled",
+                    images: parsed.images || [],
+                    camera: parsed.camera || { x: window.innerWidth / 2, y: window.innerHeight / 2, z: 1 },
+                    updatedAt: Date.now()
+                };
+                APP_STATE.canvases = [migratedCanvas];
+                APP_STATE.activeId = migratedCanvas.id;
+                if (parsed.settings) Object.assign(SETTINGS, parsed.settings);
+            } else {
+                // Completely new user initialization
+                const initCanvas = {
+                    id: generateId(),
+                    name: "Untitled",
+                    images: [],
+                    camera: { x: window.innerWidth / 2, y: window.innerHeight / 2, z: 1 },
+                    updatedAt: Date.now()
+                };
+                APP_STATE.canvases = [initCanvas];
+                APP_STATE.activeId = initCanvas.id;
+            }
+        }
+        applyActiveCanvas();
+    } catch (e) {
+        console.error("Could not load from localStorage", e);
+    }
+}
+
+function applyActiveCanvas() {
+    const active = APP_STATE.canvases.find(c => c.id === APP_STATE.activeId);
+    if (!active) return;
+    
+    canvasName = active.name;
+    // Deep clone arrays/objects to prevent reference leaks between APP_STATE and physics logic
+    STATE.images = JSON.parse(JSON.stringify(active.images)); 
+    STATE.camera = JSON.parse(JSON.stringify(active.camera));
+    STATE.selection.clear();
+    
+    // Reset animation physics bounds to new camera target instantly
+    ANIMATION.targetX = null;
+    ANIMATION.targetY = null;
+    ANIMATION.targetZ = active.camera.z;
+    ANIMATION.vx = 0;
+    ANIMATION.vy = 0;
+    
+    // Clear DOM nodes map physically to re-render fresh
+    for (const el of imageNodesMap.values()) {
+        el.remove();
+    }
+    imageNodesMap.clear();
+    
+    // Clear history cleanly when switching contexts
+    HISTORY.undoStack = [];
+    HISTORY.redoStack = [];
+    
+    updateNameUI();
+    requestRender();
+}
+
+function createNewCanvas() {
+    saveToLocalStorage(); // Ensure current is saved before replacing
+    
+    const newCanvas = {
+        id: generateId(),
+        name: "Untitled",
+        images: [],
+        camera: { x: window.innerWidth / 2, y: window.innerHeight / 2, z: 1 },
+        updatedAt: Date.now()
+    };
+    
+    APP_STATE.canvases.push(newCanvas);
+    APP_STATE.activeId = newCanvas.id;
+    
+    applyActiveCanvas();
+    scheduleSave();
+}
+
+
+// --- History State & Methods ---
+const HISTORY = {
+    undoStack: [],
+    redoStack: [],
+    maxSize: 50
+};
+
+function saveHistory() {
+    HISTORY.undoStack.push(JSON.stringify(STATE.images));
+    if (HISTORY.undoStack.length > HISTORY.maxSize) HISTORY.undoStack.shift();
+    HISTORY.redoStack = [];
+}
+
+function undo() {
+    if (HISTORY.undoStack.length === 0) return;
+    HISTORY.redoStack.push(JSON.stringify(STATE.images));
+    loadHistoryState(HISTORY.undoStack.pop());
+    scheduleSave();
+}
+
+function redo() {
+    if (HISTORY.redoStack.length === 0) return;
+    HISTORY.undoStack.push(JSON.stringify(STATE.images));
+    loadHistoryState(HISTORY.redoStack.pop());
+    scheduleSave();
+}
+
+function loadHistoryState(stateStr) {
+    STATE.images = JSON.parse(stateStr);
+    STATE.selection.clear();
+    
+    // Clean up physical DOM nodes that are no longer present in the restored state
+    for (const [id, el] of imageNodesMap.entries()) {
+        if (!STATE.images.find(i => i.id === id)) {
+            el.remove();
+            imageNodesMap.delete(id);
+        }
+    }
+    
+    requestRender();
+}
+
+// --- Animation & Physics State ---
+const ANIMATION = {
+    targetZ: 1,
+    focalX: window.innerWidth / 2,
+    focalY: window.innerHeight / 2,
+    targetX: null, // Used for Fit-To-View absolute panning
+    targetY: null, // Used for Fit-To-View absolute panning
+    vx: 0,
+    vy: 0,
+    lastMoveTime: 0,
+    friction: 0.90, // Defines the slide distance for panning inertia
+    zoomSpeed: 0.25, // Defines the smoothing speed for zooming
+    magneticFactor: 0.35 // Defines how strongly elements pull into snap points
+};
+
+// --- DOM Elements ---
+const viewportEl = document.getElementById('viewport');
+const canvasEl = document.getElementById('canvas');
+const guidesContainer = document.getElementById('guides-container');
+const lassoEl = document.getElementById('lasso');
+const emptyStateEl = document.getElementById('empty-state');
+const hintEl = document.getElementById('out-of-view-hint');
+const imageNodesMap = new Map(); // id -> HTMLElement
+
+// --- Math & Helper Functions ---
+
+function clamp(val, min, max) {
+    return Math.max(min, Math.min(max, val));
+}
+
+function screenToCanvas(sx, sy) {
+    return {
+        x: (sx - STATE.camera.x) / STATE.camera.z,
+        y: (sy - STATE.camera.y) / STATE.camera.z
+    };
+}
+
+function canvasToScreen(cx, cy) {
+    return {
+        x: (cx * STATE.camera.z) + STATE.camera.x,
+        y: (cy * STATE.camera.z) + STATE.camera.y
+    };
+}
+
+function generateId() {
+    return 'img_' + Math.random().toString(36).substr(2, 9);
+}
+
+// Compute bounding box of a set of image IDs
+function getBoundingBox(imageIds) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let found = false;
+
+    imageIds.forEach(id => {
+        const img = STATE.images.find(i => i.id === id);
+        if (img) {
+            minX = Math.min(minX, img.x);
+            minY = Math.min(minY, img.y);
+            maxX = Math.max(maxX, img.x + img.w);
+            maxY = Math.max(maxY, img.y + img.h);
+            found = true;
+        }
+    });
+
+    if (!found) return null;
+
+    return {
+        left: minX, right: maxX, top: minY, bottom: maxY,
+        centerX: (minX + maxX) / 2, centerY: (minY + maxY) / 2,
+        w: maxX - minX, h: maxY - minY
+    };
+}
+
+// --- Image Loading ---
+
+function addImage(fileOrBlob, screenX, screenY) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const url = e.target.result; // Use Base64 DataURL for localStorage persistence
+        const imgObj = new Image();
+        
+        imgObj.onload = () => {
+            saveHistory(); // Save state before adding image
+            
+            let w = imgObj.width;
+            let h = imgObj.height;
+            
+            // Scale down large images reasonably for MVP
+            const MAX_DIM = 600;
+            if (w > MAX_DIM || h > MAX_DIM) {
+                if (w > h) { h = (h/w) * MAX_DIM; w = MAX_DIM; } 
+                else { w = (w/h) * MAX_DIM; h = MAX_DIM; }
+            }
+
+            // Convert drop coordinates to canvas coordinates, centered
+            const pt = screenToCanvas(screenX, screenY);
+            
+            const newImg = {
+                id: generateId(),
+                url: url,
+                x: pt.x - (w / 2),
+                y: pt.y - (h / 2),
+                w: w,
+                h: h,
+                aspect: w / h
+            };
+            
+            STATE.images.push(newImg);
+            STATE.selection.clear();
+            STATE.selection.add(newImg.id);
+            
+            requestRender();
+            scheduleSave();
+        };
+        imgObj.src = url;
+    };
+    reader.readAsDataURL(fileOrBlob);
+}
+
+function deleteSelected() {
+    if (STATE.selection.size === 0) return;
+    
+    saveHistory(); // Save state before deleting
+    
+    STATE.images = STATE.images.filter(img => !STATE.selection.has(img.id));
+    STATE.selection.clear();
+    
+    // Clean up DOM nodes map
+    for (const [id, el] of imageNodesMap.entries()) {
+        if (!STATE.images.find(i => i.id === id)) {
+            el.remove();
+            imageNodesMap.delete(id);
+        }
+    }
+    
+    requestRender();
+    scheduleSave();
+}
+
+// --- Fit to View Feature ---
+
+function fitToView() {
+    if (STATE.images.length === 0) return;
+
+    const allIds = STATE.images.map(i => i.id);
+    const box = getBoundingBox(allIds);
+    if (!box || box.w === 0 || box.h === 0) return;
+
+    // Use 85% of the screen width/height to provide 15% padding
+    const padding = 0.85; 
+    const scaleX = (window.innerWidth * padding) / box.w;
+    const scaleY = (window.innerHeight * padding) / box.h;
+    
+    // Determine the optimal zoom, capped between minimum and maximum settings
+    let targetZ = Math.min(scaleX, scaleY);
+    targetZ = clamp(targetZ, SETTINGS.minZoom, SETTINGS.maxZoom);
+
+    // Calculate required absolute camera positions
+    const targetX = (window.innerWidth / 2) - (box.centerX * targetZ);
+    const targetY = (window.innerHeight / 2) - (box.centerY * targetZ);
+
+    ANIMATION.targetZ = targetZ;
+    ANIMATION.targetX = targetX;
+    ANIMATION.targetY = targetY;
+    
+    // Cancel any existing inertia
+    ANIMATION.vx = 0;
+    ANIMATION.vy = 0;
+
+    requestRender();
+}
+
+
+// --- Core Logic: Snapping ---
+
+function calculateSnaps(dragBox, unselectedImages) {
+    const threshold = SETTINGS.snapThreshold / STATE.camera.z;
+    const spacing = SETTINGS.spacing;
+    
+    let bestX = null;
+    let bestY = null;
+
+    // Helper to find closest snap
+    const checkSnap = (selEdge, targetEdge, axis) => {
+        const dist = targetEdge - selEdge;
+        if (Math.abs(dist) < threshold) {
+            if (axis === 'x' && (!bestX || Math.abs(dist) < Math.abs(bestX.dist))) {
+                bestX = { dist, targetEdge };
+            }
+            if (axis === 'y' && (!bestY || Math.abs(dist) < Math.abs(bestY.dist))) {
+                bestY = { dist, targetEdge };
+            }
+        }
+    };
+
+    unselectedImages.forEach(target => {
+        const t = {
+            left: target.x, right: target.x + target.w,
+            top: target.y, bottom: target.y + target.h,
+            centerX: target.x + target.w/2, centerY: target.y + target.h/2
+        };
+
+        // --- X Axis Snaps ---
+        // Left aligns with left, right+spacing
+        checkSnap(dragBox.left, t.left, 'x');
+        checkSnap(dragBox.left, t.right + spacing, 'x');
+        // Right aligns with right, left-spacing
+        checkSnap(dragBox.right, t.right, 'x');
+        checkSnap(dragBox.right, t.left - spacing, 'x');
+        // Center aligns with center
+        checkSnap(dragBox.centerX, t.centerX, 'x');
+
+        // --- Y Axis Snaps ---
+        checkSnap(dragBox.top, t.top, 'y');
+        checkSnap(dragBox.top, t.bottom + spacing, 'y');
+        checkSnap(dragBox.bottom, t.bottom, 'y');
+        checkSnap(dragBox.bottom, t.top - spacing, 'y');
+        checkSnap(dragBox.centerY, t.centerY, 'y');
+    });
+
+    return { x: bestX, y: bestY };
+}
+
+
+// --- Render Loop ---
+
+let renderQueued = false;
+
+function requestRender() {
+    if (!renderQueued) {
+        renderQueued = true;
+        requestAnimationFrame(render);
+    }
+}
+
+function render() {
+    renderQueued = false;
+    let needsNextFrame = false;
+
+    // --- PHYSICS & INTERPOLATION ---
+    
+    // Panning Inertia
+    if (!STATE.isPanning && (Math.abs(ANIMATION.vx) > 0.05 || Math.abs(ANIMATION.vy) > 0.05)) {
+        STATE.camera.x += ANIMATION.vx;
+        STATE.camera.y += ANIMATION.vy;
+        ANIMATION.vx *= ANIMATION.friction;
+        ANIMATION.vy *= ANIMATION.friction;
+        needsNextFrame = true;
+    } else if (!STATE.isPanning) {
+        ANIMATION.vx = 0;
+        ANIMATION.vy = 0;
+    }
+
+    // Smooth Camera Animation (Fit To View override)
+    if (ANIMATION.targetX !== null && ANIMATION.targetY !== null) {
+        STATE.camera.x += (ANIMATION.targetX - STATE.camera.x) * ANIMATION.zoomSpeed;
+        STATE.camera.y += (ANIMATION.targetY - STATE.camera.y) * ANIMATION.zoomSpeed;
+        STATE.camera.z += (ANIMATION.targetZ - STATE.camera.z) * ANIMATION.zoomSpeed;
+
+        // Check if arrived at destination
+        if (Math.abs(ANIMATION.targetX - STATE.camera.x) < 0.5 &&
+            Math.abs(ANIMATION.targetY - STATE.camera.y) < 0.5 &&
+            Math.abs(ANIMATION.targetZ - STATE.camera.z) < 0.001) {
+            STATE.camera.x = ANIMATION.targetX;
+            STATE.camera.y = ANIMATION.targetY;
+            STATE.camera.z = ANIMATION.targetZ;
+            ANIMATION.targetX = null;
+            ANIMATION.targetY = null;
+        }
+        needsNextFrame = true;
+    } 
+    // Smooth Zoom (Focal-based, regular zooming)
+    else if (Math.abs(ANIMATION.targetZ - STATE.camera.z) > 0.0005) {
+        const oldZ = STATE.camera.z;
+        STATE.camera.z += (ANIMATION.targetZ - STATE.camera.z) * ANIMATION.zoomSpeed;
+        
+        // Adjust pan dynamically to keep focal point fixed throughout the animation
+        const actualFactor = STATE.camera.z / oldZ;
+        STATE.camera.x = ANIMATION.focalX - (ANIMATION.focalX - STATE.camera.x) * actualFactor;
+        STATE.camera.y = ANIMATION.focalY - (ANIMATION.focalY - STATE.camera.y) * actualFactor;
+        
+        needsNextFrame = true;
+    } else if (STATE.camera.z !== ANIMATION.targetZ) {
+        // Snap directly to target to prevent infinite micro-adjustments at the tail end
+        const oldZ = STATE.camera.z;
+        STATE.camera.z = ANIMATION.targetZ;
+        const actualFactor = STATE.camera.z / oldZ;
+        STATE.camera.x = ANIMATION.focalX - (ANIMATION.focalX - STATE.camera.x) * actualFactor;
+        STATE.camera.y = ANIMATION.focalY - (ANIMATION.focalY - STATE.camera.y) * actualFactor;
+    }
+
+    // Magnetic Snapping Interpolation
+    if (STATE.isDragging && STATE.dragStart) {
+        const ease = ANIMATION.magneticFactor;
+        
+        // Ease the active snap offset toward the target snap offset
+        STATE.activeSnap.x += (STATE.targetSnap.x - STATE.activeSnap.x) * ease;
+        STATE.activeSnap.y += (STATE.targetSnap.y - STATE.activeSnap.y) * ease;
+        
+        // Precision Lock: eliminate micro-drifts when extremely close
+        if (Math.abs(STATE.targetSnap.x - STATE.activeSnap.x) < 0.1) STATE.activeSnap.x = STATE.targetSnap.x;
+        if (Math.abs(STATE.targetSnap.y - STATE.activeSnap.y) < 0.1) STATE.activeSnap.y = STATE.targetSnap.y;
+        
+        if (STATE.activeSnap.x !== STATE.targetSnap.x || STATE.activeSnap.y !== STATE.targetSnap.y) {
+            needsNextFrame = true;
+        }
+        
+        // Apply final positions based on raw drag + active (lerped) snap
+        STATE.selection.forEach(id => {
+            const img = STATE.images.find(i => i.id === id);
+            const init = STATE.dragStart.initials.get(id);
+            if (img && init) {
+                img.x = init.x + STATE.dragStart.dx + STATE.activeSnap.x;
+                img.y = init.y + STATE.dragStart.dy + STATE.activeSnap.y;
+            }
+        });
+    }
+
+    // 1. Update Viewport & Canvas transforms
+    viewportEl.style.setProperty('--x', `${STATE.camera.x}px`);
+    viewportEl.style.setProperty('--y', `${STATE.camera.y}px`);
+    viewportEl.style.setProperty('--z', STATE.camera.z);
+    
+    canvasEl.style.transform = `translate(${STATE.camera.x}px, ${STATE.camera.y}px) scale(${STATE.camera.z})`;
+
+    // Check Out-of-View Hint
+    if (STATE.images.length > 0) {
+        const allIds = STATE.images.map(i => i.id);
+        const box = getBoundingBox(allIds);
+        if (box) {
+            const screenLeft = (box.left * STATE.camera.z) + STATE.camera.x;
+            const screenRight = (box.right * STATE.camera.z) + STATE.camera.x;
+            const screenTop = (box.top * STATE.camera.z) + STATE.camera.y;
+            const screenBottom = (box.bottom * STATE.camera.z) + STATE.camera.y;
+
+            // Entire bounding box of all elements is out of the screen bounds
+            const isOut = screenRight < 0 || screenLeft > window.innerWidth || screenBottom < 0 || screenTop > window.innerHeight;
+            
+            if (isOut) {
+                hintEl.classList.remove('hide-hint');
+            } else {
+                hintEl.classList.add('hide-hint');
+            }
+        }
+    } else {
+        hintEl.classList.add('hide-hint');
+    }
+
+    // 2. Manage Empty State
+    if (STATE.images.length === 0) {
+        emptyStateEl.classList.remove('hidden');
+    } else {
+        emptyStateEl.classList.add('hidden');
+    }
+
+    // 3. Render Images
+    STATE.images.forEach(img => {
+        let el = imageNodesMap.get(img.id);
+        
+        if (!el) {
+            // Create new DOM element for image
+            el = document.createElement('div');
+            el.className = 'image-node';
+            el.dataset.id = img.id;
+            
+            el.innerHTML = `
+                <img src="${img.url}" draggable="false" />
+                <div class="handle nw"></div>
+                <div class="handle ne"></div>
+                <div class="handle sw"></div>
+                <div class="handle se"></div>
+            `;
+            
+            canvasEl.insertBefore(el, guidesContainer);
+            imageNodesMap.set(img.id, el);
+        }
+        
+        // Update transforms and size
+        el.style.transform = `translate(${img.x}px, ${img.y}px)`;
+        el.style.width = `${img.w}px`;
+        el.style.height = `${img.h}px`;
+        
+        // Update selection state and z-index to bring to front
+        if (STATE.selection.has(img.id)) {
+            el.classList.add('selected');
+            el.style.zIndex = 10;
+        } else {
+            el.classList.remove('selected');
+            el.style.zIndex = 1;
+        }
+    });
+
+    // 4. Render Guides
+    guidesContainer.innerHTML = ''; // Clear old guides
+    if (STATE.guides.length > 0) {
+        const guideThickness = 1 / STATE.camera.z; // keep it 1px visually
+        STATE.guides.forEach(g => {
+            const guideEl = document.createElement('div');
+            guideEl.className = `guide ${g.axis}`;
+            
+            if (g.axis === 'v') {
+                guideEl.style.left = `${g.pos}px`;
+                guideEl.style.width = `${guideThickness}px`;
+            } else {
+                guideEl.style.top = `${g.pos}px`;
+                guideEl.style.height = `${guideThickness}px`;
+            }
+            guidesContainer.appendChild(guideEl);
+        });
+    }
+
+    // 5. Render Lasso
+    if (STATE.isLassoing) {
+        lassoEl.style.display = 'block';
+        const minX = Math.min(STATE.lasso.x1, STATE.lasso.x2);
+        const minY = Math.min(STATE.lasso.y1, STATE.lasso.y2);
+        const width = Math.abs(STATE.lasso.x2 - STATE.lasso.x1);
+        const height = Math.abs(STATE.lasso.y2 - STATE.lasso.y1);
+        
+        lassoEl.style.left = `${minX}px`;
+        lassoEl.style.top = `${minY}px`;
+        lassoEl.style.width = `${width}px`;
+        lassoEl.style.height = `${height}px`;
+    } else {
+        lassoEl.style.display = 'none';
+    }
+
+    if (needsNextFrame) {
+        requestRender();
+    }
+}
+
+
+// --- Interactions (Mouse / Keyboard / Touch) ---
+
+// Zoom function towards a specific screen coordinate
+function performZoom(screenX, screenY, zoomFactor) {
+    ANIMATION.targetX = null;
+    ANIMATION.targetY = null;
+    ANIMATION.targetZ = clamp(ANIMATION.targetZ * zoomFactor, SETTINGS.minZoom, SETTINGS.maxZoom);
+    ANIMATION.focalX = screenX;
+    ANIMATION.focalY = screenY;
+    requestRender();
+}
+
+// Context menu (Right click) block
+window.addEventListener('contextmenu', e => e.preventDefault());
+
+// Global Keyboard
+window.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+    // Undo / Redo Shortcuts
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+            redo();
+        } else {
+            undo();
+        }
+        return;
+    }
+    
+    // Standard 'Y' shortcut for redo just in case
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redo();
+        return;
+    }
+
+    if (e.code === 'Space' && !STATE.isSpaceDown) {
+        STATE.isSpaceDown = true;
+        viewportEl.classList.add('space-down');
+    }
+    
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+        deleteSelected();
+    }
+
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        STATE.images.forEach(img => STATE.selection.add(img.id));
+        requestRender();
+    }
+    
+    if (e.key === '+' || e.key === '=') {
+        performZoom(window.innerWidth/2, window.innerHeight/2, 1.2);
+        scheduleSave();
+    }
+    
+    if (e.key === '-' || e.key === '_') {
+        performZoom(window.innerWidth/2, window.innerHeight/2, 1/1.2);
+        scheduleSave();
+    }
+
+    if (e.key === '0') {
+        ANIMATION.targetX = null;
+        ANIMATION.targetY = null;
+        ANIMATION.targetZ = 1;
+        ANIMATION.focalX = window.innerWidth / 2;
+        ANIMATION.focalY = window.innerHeight / 2;
+        requestRender();
+        scheduleSave();
+    }
+
+    if (e.key.toLowerCase() === 'f') {
+        fitToView();
+        scheduleSave();
+    }
+});
+
+window.addEventListener('keyup', e => {
+    if (e.code === 'Space') {
+        STATE.isSpaceDown = false;
+        viewportEl.classList.remove('space-down');
+    }
+});
+
+// Wheel (Pan & Zoom)
+viewportEl.addEventListener('wheel', e => {
+    e.preventDefault(); // Prevent browser scrolling/zooming
+
+    // Intercept automatic fit-to-view if the user manually overrides
+    ANIMATION.targetX = null;
+    ANIMATION.targetY = null;
+
+    if (e.ctrlKey || e.metaKey) {
+        // Pinch-to-zoom or Ctrl+Wheel
+        const zoomFactor = Math.exp(e.deltaY * -0.01);
+        performZoom(e.clientX, e.clientY, zoomFactor);
+    } else {
+        // Trackpad pan or regular mouse wheel
+        let dx = e.deltaX;
+        let dy = e.deltaY;
+
+        // Shift+scroll maps vertical scroll to horizontal pan
+        if (e.shiftKey && dy !== 0 && dx === 0) {
+            dx = dy;
+            dy = 0;
+        }
+
+        STATE.camera.x -= dx;
+        STATE.camera.y -= dy;
+        
+        // Cancel custom inertia if the trackpad/scroll wheel is providing its own
+        ANIMATION.vx = 0;
+        ANIMATION.vy = 0;
+        
+        requestRender();
+    }
+    scheduleSave();
+}, { passive: false });
+
+// Mouse Down (Start Actions)
+viewportEl.addEventListener('mousedown', e => {
+    if (e.target.closest('#ui')) return; // Ignore UI clicks
+
+    // Intercept automatic fit-to-view if the user manually overrides
+    ANIMATION.targetX = null;
+    ANIMATION.targetY = null;
+
+    const isMiddleClick = e.button === 1;
+    const isRightClick = e.button === 2;
+
+    // Pan Initiation
+    if (STATE.isSpaceDown || isMiddleClick || isRightClick) {
+        STATE.isPanning = true;
+        viewportEl.classList.add('panning');
+        return;
+    }
+
+    // Check Handle Resize
+    const handleEl = e.target.closest('.handle');
+    if (handleEl) {
+        const imgNode = handleEl.closest('.image-node');
+        const imgId = imgNode.dataset.id;
+        const img = STATE.images.find(i => i.id === imgId);
+        
+        STATE.isResizing = true;
+        STATE.resizeStart = {
+            handle: handleEl.className.replace('handle ', '').trim(),
+            imgId: imgId,
+            mouseX: e.clientX,
+            mouseY: e.clientY,
+            startW: img.w,
+            startH: img.h,
+            startX: img.x,
+            startY: img.y,
+            initialStateStr: JSON.stringify(STATE.images) // Track state prior to resize
+        };
+        return;
+    }
+
+    // Check Image Drag / Selection
+    const imgNode = e.target.closest('.image-node');
+    if (imgNode) {
+        const imgId = imgNode.dataset.id;
+        
+        // Multi-select toggle
+        if (e.shiftKey) {
+            if (STATE.selection.has(imgId)) STATE.selection.delete(imgId);
+            else STATE.selection.add(imgId);
+        } else {
+            // Click unselected without shift -> clear & select
+            if (!STATE.selection.has(imgId)) {
+                STATE.selection.clear();
+                STATE.selection.add(imgId);
+            }
+        }
+
+        STATE.isDragging = true;
+        
+        // Take Snapshot BEFORE modifying anything to track actual changes correctly
+        const snapshotStr = JSON.stringify(STATE.images);
+        
+        // Record initial positions for all selected items
+        const initials = new Map();
+        STATE.selection.forEach(id => {
+            const img = STATE.images.find(i => i.id === id);
+            initials.set(id, { x: img.x, y: img.y });
+            // Bring dragged items to end of array to render on top
+            STATE.images.push(STATE.images.splice(STATE.images.indexOf(img), 1)[0]);
+        });
+
+        STATE.dragStart = {
+            mouseX: e.clientX,
+            mouseY: e.clientY,
+            dx: 0,
+            dy: 0,
+            initials: initials,
+            initialStateStr: snapshotStr // Track state prior to drag/z-index change
+        };
+        
+        STATE.targetSnap = { x: 0, y: 0 };
+        STATE.activeSnap = { x: 0, y: 0 };
+        
+        requestRender();
+        return;
+    }
+
+    // Lasso Selection
+    STATE.isLassoing = true;
+    STATE.lasso.x1 = e.clientX;
+    STATE.lasso.y1 = e.clientY;
+    STATE.lasso.x2 = e.clientX;
+    STATE.lasso.y2 = e.clientY;
+    if (!e.shiftKey) STATE.selection.clear();
+    requestRender();
+});
+
+// Mouse Move (Perform Actions)
+window.addEventListener('mousemove', e => {
+    
+    // Handle Panning
+    if (STATE.isPanning) {
+        ANIMATION.vx = e.movementX;
+        ANIMATION.vy = e.movementY;
+        ANIMATION.lastMoveTime = performance.now();
+        
+        STATE.camera.x += e.movementX;
+        STATE.camera.y += e.movementY;
+        requestRender();
+        return;
+    }
+
+    // Handle Lassoing
+    if (STATE.isLassoing) {
+        STATE.lasso.x2 = e.clientX;
+        STATE.lasso.y2 = e.clientY;
+
+        const lxMin = Math.min(STATE.lasso.x1, STATE.lasso.x2);
+        const lxMax = Math.max(STATE.lasso.x1, STATE.lasso.x2);
+        const lyMin = Math.min(STATE.lasso.y1, STATE.lasso.y2);
+        const lyMax = Math.max(STATE.lasso.y1, STATE.lasso.y2);
+
+        const cMin = screenToCanvas(lxMin, lyMin);
+        const cMax = screenToCanvas(lxMax, lyMax);
+
+        STATE.images.forEach(img => {
+            const overlap = (img.x < cMax.x && img.x + img.w > cMin.x &&
+                             img.y < cMax.y && img.y + img.h > cMin.y);
+            if (overlap) {
+                STATE.selection.add(img.id);
+            } else if (!e.shiftKey) {
+                // If not holding shift, remove items that fall out of lasso
+                STATE.selection.delete(img.id);
+            }
+        });
+
+        requestRender();
+        return;
+    }
+
+    // Handle Dragging Images
+    if (STATE.isDragging && STATE.dragStart) {
+        STATE.dragStart.dx = (e.clientX - STATE.dragStart.mouseX) / STATE.camera.z;
+        STATE.dragStart.dy = (e.clientY - STATE.dragStart.mouseY) / STATE.camera.z;
+
+        // Calculate hypothetical bounds based on raw drag (ignoring snap)
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        STATE.selection.forEach(id => {
+            const img = STATE.images.find(i => i.id === id);
+            const init = STATE.dragStart.initials.get(id);
+            if (img && init) {
+                const hx = init.x + STATE.dragStart.dx;
+                const hy = init.y + STATE.dragStart.dy;
+                minX = Math.min(minX, hx);
+                minY = Math.min(minY, hy);
+                maxX = Math.max(maxX, hx + img.w);
+                maxY = Math.max(maxY, hy + img.h);
+            }
+        });
+
+        const dragBox = {
+            left: minX, right: maxX, top: minY, bottom: maxY,
+            centerX: (minX + maxX) / 2, centerY: (minY + maxY) / 2,
+            w: maxX - minX, h: maxY - minY
+        };
+
+        // Compute Snaps
+        STATE.guides = [];
+        const unselected = STATE.images.filter(i => !STATE.selection.has(i.id));
+        
+        // Reset target snap each frame
+        STATE.targetSnap = { x: 0, y: 0 };
+
+        if (unselected.length > 0) {
+            const snaps = calculateSnaps(dragBox, unselected);
+            
+            // Set Target Snap Offsets (Physics loop will ease into them)
+            if (snaps.x) {
+                STATE.targetSnap.x = snaps.x.dist;
+                STATE.guides.push({ axis: 'v', pos: snaps.x.targetEdge });
+            }
+            if (snaps.y) {
+                STATE.targetSnap.y = snaps.y.dist;
+                STATE.guides.push({ axis: 'h', pos: snaps.y.targetEdge });
+            }
+        }
+
+        requestRender();
+        return;
+    }
+
+    // Handle Resizing
+    if (STATE.isResizing && STATE.resizeStart) {
+        const start = STATE.resizeStart;
+        const img = STATE.images.find(i => i.id === start.imgId);
+        if (!img) return;
+
+        const dx = (e.clientX - start.mouseX) / STATE.camera.z;
+        const dy = (e.clientY - start.mouseY) / STATE.camera.z;
+
+        // Determine new width based on drag direction
+        let newW = start.startW;
+        if (start.handle === 'se' || start.handle === 'ne') newW = start.startW + dx;
+        if (start.handle === 'sw' || start.handle === 'nw') newW = start.startW - dx;
+
+        newW = Math.max(20, newW); // minimum size
+        let newH = newW / img.aspect; // preserve aspect ratio
+
+        // Adjust origin depending on handle
+        if (start.handle === 'nw' || start.handle === 'sw') {
+            img.x = start.startX + (start.startW - newW);
+        }
+        if (start.handle === 'nw' || start.handle === 'ne') {
+            img.y = start.startY + (start.startH - newH);
+        }
+        
+        img.w = newW;
+        img.h = newH;
+
+        requestRender();
+    }
+});
+
+// Mouse Up (End Actions)
+window.addEventListener('mouseup', e => {
+    let stateChanged = false;
+
+    if (STATE.isPanning) {
+        // Stop inertia completely if the user holds the mouse still before releasing
+        if (performance.now() - ANIMATION.lastMoveTime > 50) {
+            ANIMATION.vx = 0;
+            ANIMATION.vy = 0;
+        }
+        STATE.isPanning = false;
+        viewportEl.classList.remove('panning');
+        stateChanged = true;
+    }
+    
+    if (STATE.isDragging) {
+        if (STATE.dragStart) {
+            // Force final, absolute precision alignment to guarantee no drifts upon drop
+            STATE.selection.forEach(id => {
+                const img = STATE.images.find(i => i.id === id);
+                const init = STATE.dragStart.initials.get(id);
+                if (img && init) {
+                    img.x = init.x + STATE.dragStart.dx + STATE.targetSnap.x;
+                    img.y = init.y + STATE.dragStart.dy + STATE.targetSnap.y;
+                }
+            });
+            
+            // Register History Event if the state actually changed (moved or popped to front)
+            const newStateStr = JSON.stringify(STATE.images);
+            if (newStateStr !== STATE.dragStart.initialStateStr) {
+                HISTORY.undoStack.push(STATE.dragStart.initialStateStr);
+                if (HISTORY.undoStack.length > HISTORY.maxSize) HISTORY.undoStack.shift();
+                HISTORY.redoStack = [];
+                stateChanged = true;
+            }
+        }
+        
+        STATE.isDragging = false;
+        STATE.dragStart = null;
+        STATE.guides = []; // clear guides
+    }
+    
+    if (STATE.isLassoing) {
+        STATE.isLassoing = false;
+        stateChanged = true;
+    }
+    
+    if (STATE.isResizing) {
+        if (STATE.resizeStart) {
+            // Register History Event if resize actually modified properties
+            const newStateStr = JSON.stringify(STATE.images);
+            if (newStateStr !== STATE.resizeStart.initialStateStr) {
+                HISTORY.undoStack.push(STATE.resizeStart.initialStateStr);
+                if (HISTORY.undoStack.length > HISTORY.maxSize) HISTORY.undoStack.shift();
+                HISTORY.redoStack = [];
+                stateChanged = true;
+            }
+        }
+        STATE.isResizing = false;
+        STATE.resizeStart = null;
+    }
+    
+    if (stateChanged) scheduleSave();
+    requestRender();
+});
+
+// --- File Drop & Paste ---
+
+window.addEventListener('dragover', e => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+});
+
+window.addEventListener('drop', e => {
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        // Using standard for-loop instead of for...of for max compatibility with FileList
+        for (let i = 0; i < e.dataTransfer.files.length; i++) {
+            const file = e.dataTransfer.files[i];
+            if (file.type.startsWith('image/')) {
+                addImage(file, e.clientX, e.clientY);
+            }
+        }
+    }
+});
+
+window.addEventListener('paste', e => {
+    // Prevent intercepting text paste when renaming the canvas
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+        return;
+    }
+    
+    if (!e.clipboardData || !e.clipboardData.items) return;
+    
+    const items = e.clipboardData.items;
+    
+    // Using standard for-loop instead of for...of for max compatibility with DataTransferItemList
+    for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.indexOf('image') === 0) {
+            const blob = item.getAsFile();
+            if (blob) {
+                e.preventDefault(); // Stop browser from default pasting
+                // Default paste to center of screen
+                addImage(blob, window.innerWidth / 2, window.innerHeight / 2);
+                return; // Prevent pasting multiple times if multiple formats exist
+            }
+        }
+    }
+});
+
+// --- UI Actions & Handlers ---
+
+// Inline Editing for Canvas Name
+const nameDisplay = document.getElementById('canvas-name-display');
+const nameInput = document.getElementById('canvas-name-input');
+
+function updateNameUI() {
+    nameDisplay.textContent = canvasName;
+}
+
+nameDisplay.addEventListener('click', () => {
+    nameDisplay.classList.add('hidden-ui');
+    nameInput.classList.remove('hidden-ui');
+    nameInput.value = canvasName;
+    nameInput.focus();
+    nameInput.select();
+});
+
+function commitName() {
+    if (nameInput.classList.contains('hidden-ui')) return;
+    const val = nameInput.value.trim();
+    canvasName = val || "Untitled";
+    updateNameUI();
+    nameInput.classList.add('hidden-ui');
+    nameDisplay.classList.remove('hidden-ui');
+    scheduleSave();
+}
+
+nameInput.addEventListener('blur', commitName);
+nameInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') commitName();
+    if (e.key === 'Escape') {
+        nameInput.value = canvasName; // revert
+        commitName();
+    }
+    e.stopPropagation(); // prevent global canvas shortcuts from triggering while typing
+});
+
+// --- Canvas Switcher Overlay ---
+const switcherEl = document.getElementById('canvas-switcher');
+const btnSwitcherToggle = document.getElementById('btn-switcher-toggle');
+const canvasListEl = document.getElementById('canvas-list');
+
+function renderSwitcherList() {
+    canvasListEl.innerHTML = '';
+    
+    // Sort canvases by updatedAt descending (newest edits first)
+    const sorted = [...APP_STATE.canvases].sort((a, b) => b.updatedAt - a.updatedAt);
+    
+    sorted.forEach(c => {
+        const item = document.createElement('div');
+        const isActive = c.id === APP_STATE.activeId;
+        item.className = `canvas-item ${isActive ? 'active' : ''}`;
+        
+        const d = new Date(c.updatedAt || Date.now());
+        const timeStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric'}) + ', ' + 
+                        d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        
+        item.innerHTML = `
+            <span>${c.name}</span>
+            <span class="time">Last edited: ${timeStr}</span>
+        `;
+        
+        // Add delete button only if there is more than 1 canvas left in total
+        if (APP_STATE.canvases.length > 1) {
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'btn-delete-board';
+            deleteBtn.title = 'Delete Board';
+            deleteBtn.innerHTML = `
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+            `;
+            deleteBtn.addEventListener('click', (e) => {
+                deleteCanvas(c.id, e);
+            });
+            item.appendChild(deleteBtn);
+        }
+        
+        item.addEventListener('click', (e) => {
+            if (e.target.closest('.btn-delete-board')) return; // ignore switch trigger if clicked delete
+            if (!isActive) {
+                saveToLocalStorage(); // explicitly save current state
+                APP_STATE.activeId = c.id;
+                applyActiveCanvas();
+                scheduleSave(); // save new active ID to storage
+            }
+            closeSwitcher();
+        });
+        
+        canvasListEl.appendChild(item);
+    });
+}
+
+function deleteCanvas(id, event) {
+    event.stopPropagation();
+    
+    if (APP_STATE.canvases.length <= 1) return; // Prevent deleting the last remaining board
+
+    const index = APP_STATE.canvases.findIndex(c => c.id === id);
+    if (index === -1) return;
+
+    // Delete the board
+    APP_STATE.canvases.splice(index, 1);
+
+    // If we deleted the active canvas, fallback smoothly to the next available one
+    if (APP_STATE.activeId === id) {
+        APP_STATE.activeId = APP_STATE.canvases[0].id;
+        applyActiveCanvas();
+    }
+
+    saveToLocalStorage();
+    renderSwitcherList();
+}
+
+function toggleSwitcher() {
+    if (switcherEl.classList.contains('hidden-ui')) {
+        renderSwitcherList();
+        switcherEl.classList.remove('hidden-ui');
+        btnSwitcherToggle.classList.add('active');
+    } else {
+        closeSwitcher();
+    }
+}
+
+function closeSwitcher() {
+    switcherEl.classList.add('hidden-ui');
+    btnSwitcherToggle.classList.remove('active');
+}
+
+btnSwitcherToggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleSwitcher();
+});
+
+// Close switcher when clicking outside
+document.addEventListener('mousedown', (e) => {
+    if (!switcherEl.contains(e.target) && !btnSwitcherToggle.contains(e.target)) {
+        closeSwitcher();
+    }
+});
+
+
+// Settings & New Canvas & Export
+const btnSettings = document.getElementById('btn-settings');
+const btnNewCanvasMain = document.getElementById('btn-new');
+const btnNewCanvasOverlay = document.getElementById('btn-new-board');
+const btnExport = document.getElementById('btn-export');
+
+function syncGridUI() {
+    if (SETTINGS.gridVisible) {
+        viewportEl.classList.remove('no-grid');
+        btnSettings.classList.add('active');
+    } else {
+        viewportEl.classList.add('no-grid');
+        btnSettings.classList.remove('active');
+    }
+}
+
+// --- Canvas Export Functionality ---
+async function exportCanvas() {
+    if (STATE.images.length === 0) return;
+
+    // Optional visual feedback on button
+    btnExport.style.opacity = '0.3';
+
+    try {
+        const allIds = STATE.images.map(i => i.id);
+        const box = getBoundingBox(allIds);
+        if (!box || box.w === 0 || box.h === 0) return;
+
+        // Spacing calculations matching layout exact requirements
+        const spacing = SETTINGS.spacing; 
+        const margin = spacing;
+        const bottomMargin = Math.max(spacing * 5, 80); // Special larger bottom margin for larger metadata
+
+        const outWidth = box.w + (margin * 2);
+        const outHeight = box.h + margin + bottomMargin;
+
+        const exportCanvasEl = document.createElement('canvas');
+        const dpr = Math.max(window.devicePixelRatio || 1, 2); // Enforce high quality resolution
+        
+        exportCanvasEl.width = outWidth * dpr;
+        exportCanvasEl.height = outHeight * dpr;
+
+        const ctx = exportCanvasEl.getContext('2d');
+        ctx.scale(dpr, dpr);
+
+        // Fill Base Background
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg-color').trim() || '#fbfbfb';
+        ctx.fillRect(0, 0, outWidth, outHeight);
+
+        // Load all images cleanly before rendering
+        const loadPromises = STATE.images.map(imgData => {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.crossOrigin = "anonymous";
+                img.onload = () => resolve({ img, data: imgData });
+                img.onerror = () => resolve(null); // Bypass silent failures to prevent hanging
+                img.src = imgData.url;
+            });
+        });
+
+        const loadedImages = await Promise.all(loadPromises);
+
+        // Draw Images with precise layout offsets
+        loadedImages.forEach(item => {
+            if (item && item.img) {
+                const d = item.data;
+                const drawX = (d.x - box.left) + margin;
+                const drawY = (d.y - box.top) + margin;
+                ctx.drawImage(item.img, drawX, drawY, d.w, d.h);
+            }
+        });
+
+        // Add Metadata text in bottom margin space
+        ctx.textBaseline = 'top';
+        const textY = box.h + margin + spacing * 1.5; 
+
+        // 1. Canvas Name (Bottom-Left)
+        // Scaled to 150% of UI scale (14px * 1.5 = 21px)
+        ctx.font = '600 21px Parkinsans, sans-serif';
+        ctx.fillStyle = 'rgba(28, 28, 30, 0.6)'; // Medium opacity
+        ctx.textAlign = 'left';
+        ctx.fillText(canvasName, margin, textY);
+
+        // 2. Signature "Klyra" (Top-Right of bottom margin area)
+        // Scaled to 150% of UI scale (12px * 1.5 = 18px)
+        ctx.font = '600 18px Parkinsans, sans-serif';
+        ctx.fillStyle = 'rgba(28, 28, 30, 0.2)'; // Very light watermark opacity
+        ctx.textAlign = 'right';
+        ctx.fillText('Klyra', box.w + margin, textY + 3); // Aligned cleanly to visual text baseline
+
+        // Output and trigger download
+        exportCanvasEl.toBlob(blob => {
+            if (!blob) return;
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${canvasName || 'Klyra-Export'}.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 'image/png');
+
+    } catch(e) {
+        console.error("Export failed:", e);
+    } finally {
+        // Restore button state
+        btnExport.style.opacity = '';
+    }
+}
+
+
+btnNewCanvasMain.addEventListener('click', createNewCanvas);
+btnNewCanvasOverlay.addEventListener('click', () => {
+    createNewCanvas();
+    closeSwitcher();
+});
+
+btnExport.addEventListener('click', exportCanvas);
+
+document.getElementById('btn-settings').addEventListener('click', () => {
+    SETTINGS.gridVisible = !SETTINGS.gridVisible;
+    syncGridUI();
+    scheduleSave();
+});
+
+
+// --- Initialization ---
+
+loadFromLocalStorage();
+updateNameUI();
+syncGridUI();
+requestRender();
+
+</script>
+</body>
+</html>
