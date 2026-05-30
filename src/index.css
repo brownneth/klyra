@@ -789,42 +789,6 @@ input:checked + .toggle-slider:before {
     }
 }
 
-/* Multiselect Checkbox Overlay */
-.checkbox-overlay {
-    display: none;
-    position: absolute;
-    top: 8px;
-    left: 8px;
-    width: 24px;
-    height: 24px;
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.8);
-    backdrop-filter: blur(8px);
-    border: 2px solid rgba(0, 0, 0, 0.2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10;
-    pointer-events: none;
-    transition: all 0.2s;
-}
-
-.image-node.selected .checkbox-overlay {
-    display: none;
-    background: #007aff;
-    border-color: #007aff;
-}
-
-.checkbox-overlay svg {
-    color: white;
-    opacity: 0;
-    transition: opacity 0.2s;
-}
-
-.image-node.selected .checkbox-overlay svg {
-    opacity: 1;
-}
-
 /* Multiselect Toolbar */
 .multiselect-toolbar {
     position: absolute;
@@ -864,16 +828,24 @@ input:checked + .toggle-slider:before {
     padding: 8px 16px;
 }
 
+.multiselect-toolbar .btn-delete {
+    color: #ff3b30;
+    position: relative;
+    overflow: hidden;
+    padding: 8px 16px;
+    background: transparent;
+}
+
 .multiselect-toolbar .btn-delete.confirm-delete {
-    background: #ff3b30;
-    color: white;
+    background: rgba(255, 59, 48, 0.1);
+    color: #ff3b30;
 }
 
 .multiselect-toolbar .btn-delete .delete-progress {
     position: absolute;
     top: 0; left: 0; bottom: 0;
     width: 100%;
-    background: rgba(0, 0, 0, 0.2);
+    background: rgba(255, 59, 48, 0.2);
     transform-origin: left;
     opacity: 0;
 }
@@ -883,6 +855,4 @@ input:checked + .toggle-slider:before {
     animation: shrinkProgress 3s linear forwards;
 }
 
-#app.multiselect-mode .checkbox-overlay {
-    display: flex;
-}
+

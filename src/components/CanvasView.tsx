@@ -21,7 +21,6 @@ const ANIMATION = {
 
 
 const LOCK_ICON_SVG = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
-const CHECKBOX_SVG = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>`;
 
 export function CanvasView({ 
     activeId, 
@@ -204,7 +203,7 @@ export function CanvasView({
                     
                     if (img.type === 'text') {
                         el.innerHTML = `
-                            <div class="checkbox-overlay">${CHECKBOX_SVG}</div>
+                            
                             <textarea class="text-node" spellcheck="false" placeholder="Type something...">${img.text || ''}</textarea>
                             <div class="lock-icon" style="display: none">${LOCK_ICON_SVG}</div>
                             <div class="handle nw"></div><div class="handle ne"></div><div class="handle sw"></div><div class="handle se"></div>
@@ -256,7 +255,7 @@ export function CanvasView({
                         }
                     } else {
                         el.innerHTML = `
-                            <div class="checkbox-overlay">${CHECKBOX_SVG}</div>
+                            
                             <img src="${img.objectUrl}" draggable="false" />
                             <div class="lock-icon" style="display: none">${LOCK_ICON_SVG}</div>
                             <div class="handle nw"></div><div class="handle ne"></div><div class="handle sw"></div><div class="handle se"></div>
@@ -1114,7 +1113,7 @@ export function CanvasView({
     
 
             {stateRef.current.isMultiselectMode && stateRef.current.selection.size > 0 && (
-                <div className="multiselect-toolbar">
+                <div className="multiselect-toolbar" onPointerDown={(e) => e.stopPropagation()}>
                     <span className="selected-count">Selected: {stateRef.current.selection.size}</span>
                     <button className="btn" onClick={() => {
                         stateRef.current.isMultiselectMode = false;
@@ -1139,7 +1138,7 @@ export function CanvasView({
                             }, 3000);
                         }
                     }}>
-                        {multiselectConfirmDelete ? <span className="delete-text">Delete?</span> : <span>Delete</span>}
+                        {multiselectConfirmDelete ? <span className="delete-text">Confirm Delete</span> : <span>Delete</span>}
                         <div className="delete-progress"></div>
                     </button>
                 </div>
