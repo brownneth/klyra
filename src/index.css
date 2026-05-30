@@ -42,6 +42,7 @@ body, html {
 #viewport {
     position: absolute;
     top: 0; left: 0; right: 0; bottom: 0;
+    touch-action: none;
     background-image: radial-gradient(circle, var(--grid-color) 1px, transparent 1px);
     background-size: calc(24px * var(--z)) calc(24px * var(--z));
     background-position: var(--x) var(--y);
@@ -508,7 +509,7 @@ body, html {
 
 @media (max-width: 600px) {
     #creation-toolbar {
-        bottom: 16px;
+        bottom: max(16px, env(safe-area-inset-bottom));
         width: calc(100% - 32px);
         justify-content: center;
     }
@@ -770,9 +771,11 @@ input:checked + .toggle-slider:before {
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 
-[data-tooltip]:hover::before {
-    opacity: 1;
-    transform: translateX(-50%) scale(1);
+@media (hover: hover) and (pointer: fine) {
+    [data-tooltip]:hover::before {
+        opacity: 1;
+        transform: translateX(-50%) scale(1);
+    }
 }
 
 /* Toast Notifications */

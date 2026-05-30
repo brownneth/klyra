@@ -40,6 +40,7 @@ export function CanvasView({
     
     const [isEmpty, setIsEmpty] = useState(initialImages.length === 0);
     const [isOutOfView, setIsOutOfView] = useState(false);
+    const [contextMenu, setContextMenu] = useState<{x: number, y: number} | null>(null);
     
     const { stateRef, pushHistory, undo, redo } = useCanvasPhysics(initialImages, initialCamera);
     const imageNodesMap = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -511,14 +512,51 @@ export function CanvasView({
         const vp = viewportRef.current;
         if (!vp) return;
 
-        const handleMouseDown = (e: MouseEvent) => {
-            if ((e.target as Element).closest('#ui') || (e.target as Element).closest('#creation-toolbar')) return;
+        const pointers = new Map<number, { x: number, y: number }>();
+        let initialPinchDist: number | null = null;
+        let initialPinchMid: { x: number, y: number } | null = null;
+        let initialCamera: { x: number, y: number, z: number } | null = null;
+        let longPressTimeout: ReturnType<typeof setTimeout> | null = null;
+
+        const getPointersMidpoint = () => {
+            const pts = Array.from(pointers.values());
+            if (pts.length < 2) return null;
+            return {
+                x: (pts[0].x + pts[1].x) / 2,
+                y: (pts[0].y + pts[1].y) / 2
+            };
+        };
+
+        const getPointersDist = () => {
+            const pts = Array.from(pointers.values());
+            if (pts.length < 2) return null;
+            return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+        };
+
+        const handlePointerDown = (e: PointerEvent) => {
+            if ((e.target as Element).closest('#ui') || (e.target as Element).closest('#creation-toolbar') || (e.target as Element).closest('.context-menu')) return;
             if ((e.target as Element).tagName === 'TEXTAREA') return;
 
+            pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
             const state = stateRef.current;
+            setContextMenu(null);
 
             ANIMATION.targetX = null;
             ANIMATION.targetY = null;
+
+            if (pointers.size === 2) {
+                initialPinchDist = getPointersDist();
+                initialPinchMid = getPointersMidpoint();
+                initialCamera = { x: state.camera.x, y: state.camera.y, z: state.camera.z };
+                
+                state.isDragging = false;
+                state.isLassoing = false;
+                state.isResizing = false;
+                if (longPressTimeout) clearTimeout(longPressTimeout);
+                return;
+            }
+
+            if (pointers.size > 2) return;
 
             const isMiddleClick = e.button === 1;
             const isRightClick = e.button === 2;
@@ -527,6 +565,20 @@ export function CanvasView({
                 state.isPanning = true;
                 if (vp) vp.classList.add('panning');
                 return;
+            }
+
+            if (e.pointerType === 'touch' && pointers.size === 1) {
+                if (longPressTimeout) clearTimeout(longPressTimeout);
+                longPressTimeout = setTimeout(() => {
+                    const ptr = pointers.get(e.pointerId);
+                    if (ptr) {
+                        setContextMenu({ x: ptr.x, y: ptr.y });
+                        state.isDragging = false;
+                        state.isLassoing = false;
+                        state.isResizing = false;
+                        requestRender();
+                    }
+                }, 500);
             }
 
             const handleEl = (e.target as Element).closest('.handle');
@@ -574,7 +626,6 @@ export function CanvasView({
 
                 const imgObj = state.images.find(i => i.id === imgId);
                 
-                // Allow selecting locked items with click to unlock them via hotkey, but don't allow dragging them
                 if (e.shiftKey) {
                     if (state.selection.has(imgId)) state.selection.delete(imgId);
                     else state.selection.add(imgId);
@@ -611,8 +662,37 @@ export function CanvasView({
             requestRender();
         };
 
-        const handleMouseMove = (e: MouseEvent) => {
+        const handlePointerMove = (e: PointerEvent) => {
+            if (pointers.has(e.pointerId)) {
+                const ptr = pointers.get(e.pointerId)!;
+                if (longPressTimeout && Math.hypot(e.clientX - ptr.x, e.clientY - ptr.y) > 10) {
+                    clearTimeout(longPressTimeout);
+                    longPressTimeout = null;
+                }
+                pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            }
+
             const state = stateRef.current;
+
+            if (pointers.size === 2 && initialPinchDist && initialPinchMid && initialCamera) {
+                const newDist = getPointersDist();
+                const newMid = getPointersMidpoint();
+                if (newDist && newMid) {
+                    const scale = newDist / initialPinchDist;
+                    let newZ = initialCamera.z * scale;
+                    newZ = clamp(newZ, 0.1, 5);
+
+                    const mx = (initialPinchMid.x - initialCamera.x) / initialCamera.z;
+                    const my = (initialPinchMid.y - initialCamera.y) / initialCamera.z;
+
+                    state.camera.z = newZ;
+                    state.camera.x = newMid.x - mx * newZ;
+                    state.camera.y = newMid.y - my * newZ;
+                    
+                    requestRender();
+                }
+                return;
+            }
 
             if (state.isPanning) {
                 ANIMATION.vx = e.movementX;
@@ -635,7 +715,7 @@ export function CanvasView({
                 const cMax = screenToCanvas(lxMax, lyMax, state.camera);
 
                 state.images.forEach(img => {
-                    if (img.locked) return; // Lasso ignores locked items
+                    if (img.locked) return;
                     const overlap = (img.x < cMax.x && img.x + img.w > cMin.x && img.y < cMax.y && img.y + img.h > cMin.y);
                     if (overlap) state.selection.add(img.id);
                     else if (!e.shiftKey) state.selection.delete(img.id);
@@ -722,8 +802,21 @@ export function CanvasView({
             }
         };
 
-        const handleMouseUp = () => {
+        const handlePointerUp = (e: PointerEvent) => {
+            pointers.delete(e.pointerId);
+            if (longPressTimeout) {
+                clearTimeout(longPressTimeout);
+                longPressTimeout = null;
+            }
+
             const state = stateRef.current;
+            
+            if (pointers.size < 2) {
+                initialPinchDist = null;
+                initialPinchMid = null;
+                initialCamera = null;
+            }
+
             if (state.isPanning) {
                 if (performance.now() - ANIMATION.lastMoveTime > 50) {
                     ANIMATION.vx = 0;
@@ -755,13 +848,15 @@ export function CanvasView({
             requestRender();
         };
 
-        vp.addEventListener('mousedown', handleMouseDown);
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('mouseup', handleMouseUp);
+        vp.addEventListener('pointerdown', handlePointerDown);
+        window.addEventListener('pointermove', handlePointerMove);
+        window.addEventListener('pointerup', handlePointerUp);
+        window.addEventListener('pointercancel', handlePointerUp);
         return () => {
-            vp.removeEventListener('mousedown', handleMouseDown);
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
+            vp.removeEventListener('pointerdown', handlePointerDown);
+            window.removeEventListener('pointermove', handlePointerMove);
+            window.removeEventListener('pointerup', handlePointerUp);
+            window.removeEventListener('pointercancel', handlePointerUp);
         };
     }, [requestRender]);
 
@@ -841,18 +936,63 @@ export function CanvasView({
         window.addEventListener('drop', handleDrop);
         window.addEventListener('dragover', handleDragOver);
         window.addEventListener('paste', handlePaste);
+
+        const handleCustomPaste = async (e: Event) => { const ev = e as CustomEvent;
+            try {
+                if (navigator.clipboard.read) {
+                    const items = await navigator.clipboard.read();
+                    for (const item of items) {
+                        const imageTypes = item.types.filter(t => t.startsWith('image/'));
+                        if (imageTypes.length > 0) {
+                            const blob = await item.getType(imageTypes[0]);
+                            const file = new File([blob], "pasted.png", { type: imageTypes[0] });
+                            processFile(file, ev.detail.x, ev.detail.y);
+                            return;
+                        }
+                        const textTypes = item.types.filter(t => t === 'text/plain');
+                        if (textTypes.length > 0) {
+                            const blob = await item.getType('text/plain');
+                            const text = await blob.text();
+                            
+                            const pt = screenToCanvas(ev.detail.x, ev.detail.y, stateRef.current.camera);
+                            const topZ = stateRef.current.images.reduce((max, i) => Math.max(max, i.zIndex || 1), 0);
+                            
+                            const newImg = {
+                                id: generateId(),
+                                blobId: '',
+                                w: 300, h: 100, x: pt.x - 150, y: pt.y - 50, aspect: 3,
+                                type: 'text' as const, content: text, zIndex: topZ + 1
+                            };
+                            
+                            pushHistory();
+                            stateRef.current.images.push(newImg);
+                            setIsEmpty(false);
+                            requestRender();
+                            onSaveRequested(stateRef.current.images, stateRef.current.camera);
+                            return;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Custom paste failed", err);
+            }
+        };
+        window.addEventListener('customPaste', handleCustomPaste );
         return () => {
             window.removeEventListener('drop', handleDrop);
             window.removeEventListener('dragover', handleDragOver);
             window.removeEventListener('paste', handlePaste);
+            window.removeEventListener('customPaste', handleCustomPaste );
         };
     }, [requestRender, pushHistory]);
 
     // Handle Custom Event for Text Node
     useEffect(() => {
-        const handleAddText = () => {
+        const handleAddText = (e?: any) => {
             const state = stateRef.current;
-            const pt = screenToCanvas(window.innerWidth / 2, window.innerHeight / 2, state.camera);
+            const cx = e?.detail?.x ?? (window.innerWidth / 2);
+            const cy = e?.detail?.y ?? (window.innerHeight / 2);
+            const pt = screenToCanvas(cx, cy, state.camera);
             const w = 300, h = 100;
             const topZ = state.images.reduce((max, i) => Math.max(max, i.zIndex || 1), 0);
             
@@ -888,6 +1028,47 @@ export function CanvasView({
                 <div id="lasso" ref={lassoRef}></div>
             </div>
 
+
+            {contextMenu && (
+                <div className="context-menu" style={{
+                    position: 'absolute',
+                    left: contextMenu.x,
+                    top: contextMenu.y,
+                    transform: 'translate(-50%, -100%)',
+                    marginTop: '-20px',
+                    zIndex: 3000,
+                    background: 'rgba(255, 255, 255, 0.7)',
+                    backdropFilter: 'blur(24px) saturate(150%)',
+                    WebkitBackdropFilter: 'blur(24px) saturate(150%)',
+                    border: '1px solid rgba(0,0,0,0.1)',
+                    borderRadius: '16px',
+                    padding: '8px',
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.6)',
+                    display: 'flex',
+                    gap: '4px'
+                }}>
+                    <button 
+                        className="btn" 
+                        style={{ padding: '8px 16px', fontWeight: 600, margin: 0, opacity: 1, color: '#000' }}
+                        onClick={() => {
+                            window.dispatchEvent(new CustomEvent('customPaste', { detail: { x: contextMenu.x, y: contextMenu.y } }));
+                            setContextMenu(null);
+                        }}>
+                        Paste
+                    </button>
+                    <div style={{ width: '1px', background: 'rgba(0,0,0,0.1)', margin: '4px 0' }} />
+                    <button 
+                        className="btn" 
+                        style={{ padding: '8px 16px', fontWeight: 600, margin: 0, opacity: 1, color: '#000' }}
+                        onClick={() => {
+                            setContextMenu(null);
+                            window.dispatchEvent(new CustomEvent('addTextNode', { detail: { x: contextMenu.x, y: contextMenu.y } }));
+                        }}>
+                        Add Text
+                    </button>
+                </div>
+            )}
+    
             <div id="empty-state" className={!isEmpty ? 'hidden' : ''}>
                 <h2>Canvas is empty</h2>
                 <p>Drag & Drop or Paste (Ctrl+V) images anywhere</p>
