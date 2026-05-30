@@ -40,6 +40,9 @@ export function CanvasView({
     
     const [isEmpty, setIsEmpty] = useState(initialImages.length === 0);
     const [isOutOfView, setIsOutOfView] = useState(false);
+    const [multiselectConfirmDelete, setMultiselectConfirmDelete] = useState(false);
+    const multiselectTimeoutRef = useRef<number | null>(null);
+    const [imageContextMenu, setImageContextMenu] = useState<{x: number, y: number, id: string} | null>(null);
     const [contextMenu, setContextMenu] = useState<{x: number, y: number} | null>(null);
     
     const { stateRef, pushHistory, undo, redo } = useCanvasPhysics(initialImages, initialCamera);
@@ -558,6 +561,14 @@ export function CanvasView({
 
             if (pointers.size > 2) return;
 
+            
+            const imgTarget = (e.target as Element).closest('.image-node') as HTMLElement;
+            if (e.button === 2 && imgTarget) {
+                setImageContextMenu({ x: e.clientX, y: e.clientY, id: imgTarget.dataset.id! });
+                state.isDragging = false;
+                state.isLassoing = false;
+                return;
+            }
             const isMiddleClick = e.button === 1;
             const isRightClick = e.button === 2;
 
@@ -572,7 +583,18 @@ export function CanvasView({
                 longPressTimeout = setTimeout(() => {
                     const ptr = pointers.get(e.pointerId);
                     if (ptr) {
-                        setContextMenu({ x: ptr.x, y: ptr.y });
+                        const targetEl = document.elementFromPoint(ptr.x, ptr.y);
+                        const hitImgNode = targetEl ? targetEl.closest('.image-node') as HTMLElement : null;
+                        if (hitImgNode) {
+                            const imgId = hitImgNode.dataset.id!;
+                            state.isMultiselectMode = true;
+                            if (!state.selection.has(imgId)) {
+                                state.selection.add(imgId);
+                            }
+                            setMultiselectConfirmDelete(false);
+                        } else {
+                            setContextMenu({ x: ptr.x, y: ptr.y });
+                        }
                         state.isDragging = false;
                         state.isLassoing = false;
                         state.isResizing = false;
@@ -626,7 +648,8 @@ export function CanvasView({
 
                 const imgObj = state.images.find(i => i.id === imgId);
                 
-                if (e.shiftKey) {
+                const isToggling = e.shiftKey || state.isMultiselectMode;
+                if (isToggling) {
                     if (state.selection.has(imgId)) state.selection.delete(imgId);
                     else state.selection.add(imgId);
                 } else {
@@ -653,6 +676,16 @@ export function CanvasView({
                 return;
             }
 
+            if (e.pointerType === 'touch') {
+                state.isMultiselectMode = false;
+                setMultiselectConfirmDelete(false);
+                state.isPanning = true;
+                if (vp) vp.classList.add('panning');
+                return;
+            }
+
+            state.isMultiselectMode = false;
+            setMultiselectConfirmDelete(false);
             state.isLassoing = true;
             state.lasso.x1 = e.clientX;
             state.lasso.y1 = e.clientY;
@@ -663,11 +696,18 @@ export function CanvasView({
         };
 
         const handlePointerMove = (e: PointerEvent) => {
+            let dx = e.movementX;
+            let dy = e.movementY;
+
             if (pointers.has(e.pointerId)) {
                 const ptr = pointers.get(e.pointerId)!;
                 if (longPressTimeout && Math.hypot(e.clientX - ptr.x, e.clientY - ptr.y) > 10) {
                     clearTimeout(longPressTimeout);
                     longPressTimeout = null;
+                }
+                if (e.pointerType === 'touch') {
+                    dx = e.clientX - ptr.x;
+                    dy = e.clientY - ptr.y;
                 }
                 pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
             }
@@ -695,11 +735,11 @@ export function CanvasView({
             }
 
             if (state.isPanning) {
-                ANIMATION.vx = e.movementX;
-                ANIMATION.vy = e.movementY;
+                ANIMATION.vx = dx;
+                ANIMATION.vy = dy;
                 ANIMATION.lastMoveTime = performance.now();
-                state.camera.x += e.movementX;
-                state.camera.y += e.movementY;
+                state.camera.x += dx;
+                state.camera.y += dy;
                 requestRender();
                 return;
             }
@@ -1069,6 +1109,73 @@ export function CanvasView({
                 </div>
             )}
     
+
+            {stateRef.current.isMultiselectMode && stateRef.current.selection.size > 0 && (
+                <div className="multiselect-toolbar">
+                    <span className="selected-count">Selected: {stateRef.current.selection.size}</span>
+                    <button className="btn" onClick={() => {
+                        stateRef.current.isMultiselectMode = false;
+                        setMultiselectConfirmDelete(false);
+                        stateRef.current.selection.clear();
+                        requestRender();
+                    }}>Cancel</button>
+                    <button className={`btn btn-delete ${multiselectConfirmDelete ? 'confirm-delete' : ''}`} onClick={() => {
+                        if (multiselectConfirmDelete) {
+                            stateRef.current.images = stateRef.current.images.filter(img => !stateRef.current.selection.has(img.id));
+                            stateRef.current.selection.clear();
+                            stateRef.current.isMultiselectMode = false;
+                            setMultiselectConfirmDelete(false);
+                            pushHistory();
+                            requestRender();
+                            onSaveRequested(stateRef.current.images, stateRef.current.camera);
+                        } else {
+                            setMultiselectConfirmDelete(true);
+                            if (multiselectTimeoutRef.current) clearTimeout(multiselectTimeoutRef.current);
+                            multiselectTimeoutRef.current = window.setTimeout(() => {
+                                setMultiselectConfirmDelete(false);
+                            }, 3000);
+                        }
+                    }}>
+                        {multiselectConfirmDelete ? <span className="delete-text">Delete?</span> : <span>Delete</span>}
+                        <div className="delete-progress"></div>
+                    </button>
+                </div>
+            )}
+
+            {imageContextMenu && (
+                <div className="context-menu" style={{
+                    position: 'absolute',
+                    left: imageContextMenu.x,
+                    top: imageContextMenu.y,
+                    transform: 'translate(-50%, -100%)',
+                    marginTop: '-20px',
+                    zIndex: 3000,
+                    background: 'rgba(255, 255, 255, 0.7)',
+                    backdropFilter: 'blur(24px) saturate(150%)',
+                    WebkitBackdropFilter: 'blur(24px) saturate(150%)',
+                    border: '1px solid rgba(0,0,0,0.1)',
+                    borderRadius: '16px',
+                    padding: '8px',
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.6)',
+                    display: 'flex',
+                    gap: '4px'
+                }}>
+                    <button 
+                        className="btn" 
+                        style={{ padding: '8px 16px', fontWeight: 600, margin: 0, opacity: 1, color: '#000' }}
+                        onClick={() => {
+                            stateRef.current.isMultiselectMode = true;
+                            if (!stateRef.current.selection.has(imageContextMenu.id)) {
+                                stateRef.current.selection.add(imageContextMenu.id);
+                            }
+                            setImageContextMenu(null);
+                            requestRender();
+                        }}>
+                        Select
+                    </button>
+                </div>
+            )}
+
             <div id="empty-state" className={!isEmpty ? 'hidden' : ''}>
                 <h2>Canvas is empty</h2>
                 <p>Drag & Drop or Paste (Ctrl+V) images anywhere</p>

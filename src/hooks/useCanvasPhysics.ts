@@ -11,6 +11,7 @@ export interface PhysicsState {
     isDragging: boolean;
     isResizing: boolean;
     isLassoing: boolean;
+    isMultiselectMode: boolean;
     
     dragStart: { mouseX: number, mouseY: number, dx: number, dy: number, initials: Map<string, {x: number, y: number}>, hasMoved?: boolean } | null;
     resizeStart: { handle: string, imgId: string, mouseX: number, mouseY: number, startW: number, startH: number, startX: number, startY: number, hasMoved?: boolean } | null;
@@ -38,6 +39,7 @@ export function useCanvasPhysics(
         isDragging: false,
         isResizing: false,
         isLassoing: false,
+        isMultiselectMode: false,
         dragStart: null,
         resizeStart: null,
         lasso: { x1: 0, y1: 0, x2: 0, y2: 0 },
