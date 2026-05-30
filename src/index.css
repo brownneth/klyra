@@ -791,6 +791,7 @@ input:checked + .toggle-slider:before {
 
 /* Multiselect Checkbox Overlay */
 .checkbox-overlay {
+    display: none;
     position: absolute;
     top: 8px;
     left: 8px;
@@ -809,6 +810,7 @@ input:checked + .toggle-slider:before {
 }
 
 .image-node.selected .checkbox-overlay {
+    display: none;
     background: #007aff;
     border-color: #007aff;
 }
@@ -826,9 +828,12 @@ input:checked + .toggle-slider:before {
 /* Multiselect Toolbar */
 .multiselect-toolbar {
     position: absolute;
-    top: max(16px, env(safe-area-inset-top));
+    bottom: calc(max(24px, env(safe-area-inset-bottom, 24px)) + 64px);
     left: 50%;
     transform: translateX(-50%);
+    width: calc(100% - 48px);
+    max-width: 400px;
+    justify-content: space-between;
     z-index: 3000;
     display: flex;
     align-items: center;
@@ -876,4 +881,8 @@ input:checked + .toggle-slider:before {
 .multiselect-toolbar .btn-delete.confirm-delete .delete-progress {
     opacity: 1;
     animation: shrinkProgress 3s linear forwards;
+}
+
+#app.multiselect-mode .checkbox-overlay {
+    display: flex;
 }
