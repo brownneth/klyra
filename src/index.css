@@ -846,7 +846,7 @@ input:checked + .toggle-slider:before {
     position: absolute;
     top: 0; left: 0; bottom: 0;
     width: 100%;
-    background: rgba(255, 59, 48, 0.4);
+    background: #ff7676;
     transform-origin: left;
     opacity: 0;
 }

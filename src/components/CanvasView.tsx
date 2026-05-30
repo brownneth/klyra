@@ -679,6 +679,8 @@ export function CanvasView({
             }
 
             if (e.pointerType === 'touch') {
+                state.selection.clear();
+                requestRender();
                 state.isMultiselectMode = false;
                 setMultiselectConfirmDelete(false);
                 state.isPanning = true;
@@ -1184,8 +1186,33 @@ export function CanvasView({
                 <p>Drag & Drop or Paste (Ctrl+V) images anywhere</p>
             </div>
 
-            <div id="out-of-view-hint" className={!isOutOfView ? 'hide-hint' : ''}>
-                Press F to re-center
+            <div 
+                id="out-of-view-hint" 
+                className={!isOutOfView ? 'hide-hint' : ''}
+                onClick={() => {
+                    const state = stateRef.current;
+                    if (state.images.length === 0) return;
+                    const allIds = state.images.map(i => i.id);
+                    const box = getBoundingBox(allIds, state.images);
+                    if (box) {
+                        const padding = 0.9;
+                        const scaleX = (window.innerWidth * padding) / box.w;
+                        const scaleY = (window.innerHeight * padding) / box.h;
+                        
+                        let targetZ = Math.min(scaleX, scaleY);
+                        targetZ = clamp(targetZ, SETTINGS.minZoom, SETTINGS.maxZoom);
+
+                        ANIMATION.targetX = (window.innerWidth / 2) - (box.centerX * targetZ);
+                        ANIMATION.targetY = (window.innerHeight / 2) - (box.centerY * targetZ);
+                        ANIMATION.targetZ = targetZ;
+                        ANIMATION.vx = 0;
+                        ANIMATION.vy = 0;
+                        requestRender();
+                    }
+                }}
+            >
+                <span className="desktop-text">Press F to re-center</span>
+                <span className="mobile-text">Click to re-center</span>
             </div>
         </div>
     );
