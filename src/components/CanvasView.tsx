@@ -728,6 +728,7 @@ export function CanvasView({
                     const my = (initialPinchMid.y - initialCamera.y) / initialCamera.z;
 
                     state.camera.z = newZ;
+                    ANIMATION.targetZ = newZ;
                     state.camera.x = newMid.x - mx * newZ;
                     state.camera.y = newMid.y - my * newZ;
                     
