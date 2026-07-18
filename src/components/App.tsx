@@ -378,6 +378,7 @@ export default function App() {
                                     id="canvas-name-input" 
                                     value={nameInput}
                                     onChange={e => setNameInput(e.target.value)}
+                                    onFocus={e => e.target.select()}
                                     onBlur={handleNameCommit}
                                     onKeyDown={e => {
                                         if (e.key === 'Enter') handleNameCommit();
